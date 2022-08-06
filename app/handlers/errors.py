@@ -1,32 +1,29 @@
-from aiogram import types
-from aiogram.utils.exceptions import CantParseEntities
-from aiogram.utils.markdown import quote_html
+import logging
 
-from app.config.main import load_config
-from app.misc import dp, bot
-from app.utils.log import Logger
+import json
+from aiogram import Dispatcher, Bot
+from aiogram.types import Update
+from functools import partial
+
+from aiogram.utils.markdown import html_decoration as hd
+
+logger = logging.getLogger(__name__)
 
 
-logger = Logger(__name__)
-
-
-@dp.errors_handler()
-async def errors_handler(update: types.Update, exception: Exception):
-    try:
-        raise exception
-    except CantParseEntities as e:
-        logger.error("Cause exception {e} in update {update}", e=e, update=update)
-
-    except Exception as e:
-        logger.exception(
-            "Cause exception {e} in update {update}",
-            e=e, update=update, exc_info=e
-        )
-
-    await bot.send_message(
-        load_config().log.log_chat_id,
-        f"Получено исключение {quote_html(exception)}\n"
-        f"во время обработки апдейта {quote_html(update)}\n"
-        f"{quote_html(exception.args)}"
+async def handle(update: Update, exception: Exception, log_chat_id: int, bot: Bot):
+    logger.exception(
+        "Cause unexpected exception %s, by processing %s",
+        exception.__class__.__name__, update.dict(exclude_none=True)
     )
-    return True
+    if not log_chat_id:
+        return
+    await bot.send_message(
+        log_chat_id,
+        f"Получено исключение {exception.__class__.__name__}\n"
+        f"во время обработки апдейта {hd.quote(json.dumps(update.dict(exclude_none=True), default=str))}\n"
+        f"{hd.quote(exception.args[0])}"
+    )
+
+
+def setup_errors(dp: Dispatcher, log_chat_id: int):
+    dp.errors.register(partial(handle, log_chat_id=log_chat_id))

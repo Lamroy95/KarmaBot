@@ -1,40 +1,37 @@
-import os
-from functools import lru_cache
-from pathlib import Path
+import logging.config
 
 import yaml
-from dotenv import load_dotenv
 
-from app.models.config import Config, TgClientConfig
-from .db import load_db_config
-from .karmic_restriction import load_karmic_restriction_config
-from .log import load_log_config
-from .storage import load_storage
-from .webhook import load_webhook_config
-from .logging_config import logging_setup
+from app.config.db import load_db_config
+from app.models.config import Config
+from app.models.config.main import Paths, BotConfig, BotApiConfig, BotApiType
+
+logger = logging.getLogger(__name__)
 
 
-@lru_cache
-def load_config(config_dir: Path = None) -> Config:
-    app_dir: Path = Path(__file__).parent.parent.parent
-    config_dir = config_dir or app_dir / 'config'
-    load_dotenv(str(config_dir / '.env'))
-    log_config = load_log_config(app_dir=app_dir)
-    logging_setup(config_dir, log_config)
-
-    _bot_token = os.getenv("KARMA_BOT_TOKEN")
-    with (config_dir / "bot-config.yml").open('r', encoding="utf-8") as f:
-        config_file_data = yaml.load(f, Loader=yaml.FullLoader)
+def load_config(paths: Paths) -> Config:
+    with (paths.config_path / "config.yaml").open("r") as f:
+        config_dct = yaml.safe_load(f)
 
     return Config(
-        auto_restriction=load_karmic_restriction_config(),
-        db=load_db_config(app_dir),
-        webhook=load_webhook_config(),
-        app_dir=app_dir,
-        bot_token=_bot_token,
-        superusers=frozenset(config_file_data['superusers']),
-        log=log_config,
-        dump_chat_id=-1001459777201,  # ⚙️Testing Area >>> Python Scripts,
-        tg_client=TgClientConfig(bot_token=_bot_token),
-        storage=load_storage(config_file_data["storage"]),
+        paths=paths,
+        db=load_db_config(config_dct["db"]),
+        bot=load_bot_config(config_dct["bot"]),
+    )
+
+
+def load_bot_config(dct: dict) -> BotConfig:
+    return BotConfig(
+        token=dct["token"],
+        log_chat=dct["log_chat"],
+        superusers=dct["superusers"],
+        bot_api=load_botapi(dct["botapi"])
+    )
+
+
+def load_botapi(dct: dict) -> BotApiConfig:
+    return BotApiConfig(
+        type=BotApiType[dct["type"]],
+        botapi_url=dct.get("botapi_url", None),
+        botapi_file_url=dct.get("file_url", None),
     )

@@ -1,20 +1,18 @@
 import logging.config
-from pathlib import Path
 
 import yaml
 
-from app.models.config import LogConfig
-from app.utils.log import Logger
+from app.models.config.main import Paths
+
+logger = logging.getLogger(__name__)
 
 
-logger = Logger(__name__)
-
-
-def logging_setup(config_path: Path, log_config: LogConfig):
-    log_dir = log_config.log_path
-    log_dir.mkdir(exist_ok=True)
-    with (config_path / "logging.yaml").open("r") as f:
-        logging_config = yaml.safe_load(f)
-        logging_config['handlers']['file']['filename'] = log_dir / "app.log"
+def setup_logging(paths: Paths):
+    try:
+        with paths.logging_config_file.open("r") as f:
+            logging_config = yaml.safe_load(f)
         logging.config.dictConfig(logging_config)
-    logger.info("Logging configured successfully")
+        logger.info("Logging configured successfully")
+    except IOError:
+        logging.basicConfig(level=logging.DEBUG)
+        logger.warning("logging config file not found, use basic config")

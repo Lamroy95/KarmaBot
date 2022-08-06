@@ -1,18 +1,13 @@
-# partially from https://github.com/aiogram/bot
 from aiogram import Dispatcher
-from aiogram.contrib.middlewares.logging import LoggingMiddleware
+from sqlalchemy.orm import sessionmaker
 
 from app.middlewares.config_middleware import ConfigMiddleware
+from app.middlewares.data_load_middleware import LoadDataMiddleware
 from app.middlewares.db_middleware import DBMiddleware
-from app.models.config import Config
-from app.utils.log import Logger
+from app.models.config.main import BotConfig
 
 
-logger = Logger(__name__)
-
-
-def setup(dispatcher: Dispatcher, config: Config):
-    logger.info("Configure middlewares...")
-    dispatcher.middleware.setup(DBMiddleware(tg_client_config=config.tg_client))
-    dispatcher.middleware.setup(ConfigMiddleware(config))
-    dispatcher.middleware.setup(LoggingMiddleware())
+def setup_middlewares(dp: Dispatcher, pool: sessionmaker, bot_config: BotConfig):
+    dp.message.middleware(ConfigMiddleware(bot_config))
+    dp.message.middleware(DBMiddleware(pool))
+    dp.message.middleware(LoadDataMiddleware())

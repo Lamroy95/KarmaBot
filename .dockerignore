@@ -13,3 +13,4 @@ Dockerfile
 docs/
 jsons/
 log/
+config_dist/

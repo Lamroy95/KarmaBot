@@ -1,151 +1,24 @@
-from datetime import datetime
+from sqlalchemy import Column, Text, BigInteger, Boolean
 
-from aiogram import types
-from aiogram.utils.markdown import hlink, quote_html
-from tortoise import fields
-from tortoise.exceptions import DoesNotExist
-from tortoise.models import Model
-
-from app.models.common import TypeRestriction
-from app.utils.exceptions import UserWithoutUserIdError
-from .chat import Chat
+from app.models.db.base import Base
 
 
-class User(Model):
-    id = fields.IntField(pk=True)
-    tg_id = fields.BigIntField(unique=True)
-    first_name = fields.CharField(max_length=255, null=True)
-    last_name = fields.CharField(max_length=255, null=True)
-    username = fields.CharField(max_length=32, null=True)
-    is_bot: bool = fields.BooleanField(null=True)
-    # noinspection PyUnresolvedReferences
-    karma: fields.ReverseRelation['UserKarma']  # noqa: F821
-    # noinspection PyUnresolvedReferences
-    my_restriction_events: fields.ReverseRelation['ModeratorEvent']  # noqa: F821
-
-    class Meta:
-        table = "users"
-
-    @classmethod
-    async def create_from_tg_user(cls, user: types.User):
-        user = await cls.create(
-            tg_id=user.id,
-            first_name=user.first_name,
-            last_name=user.last_name,
-            username=user.username,
-            is_bot=user.is_bot
-        )
-
-        return user
-
-    async def update_user_data(self, user_tg):
-        # TODO изучить фреймворк лучше - уверен есть встроенная функция для обновления только в случае расхождений
-        changed = False
-
-        if self.tg_id is None and user_tg.id is not None:
-            changed = True
-            self.tg_id = user_tg.id
-
-        if user_tg.first_name is not None:
-            if self.first_name != user_tg.first_name:
-                changed = True
-                self.first_name = user_tg.first_name
-
-            if self.last_name != user_tg.last_name:
-                changed = True
-                self.last_name = user_tg.last_name
-
-            if self.username != user_tg.username:
-                changed = True
-                self.username = user_tg.username
-            if self.is_bot is None and user_tg.is_bot is not None:
-                changed = True
-                self.is_bot = user_tg.is_bot
-
-        if changed:
-            await self.save()
-
-    @classmethod
-    async def get_or_create_from_tg_user(cls, user_tg: types.User):
-        if user_tg.id is None:
-            try:
-                return await cls.get(username__iexact=user_tg.username)
-            except DoesNotExist:
-                raise UserWithoutUserIdError(username=user_tg.username)
-
-        try:
-            user = await cls.get(tg_id=user_tg.id)
-        except DoesNotExist:
-            return await cls.create_from_tg_user(user=user_tg)
-        else:
-            await user.update_user_data(user_tg)
-        return user
-
-    @property
-    def mention_link(self):
-        return hlink(self.fullname, f"tg://user?id={self.tg_id}")
-
-    @property
-    def mention_no_link(self):
-        if self.username:
-            rez = hlink(self.fullname, f"t.me/{self.username}")
-        else:
-            rez = quote_html(self.fullname)
-        return rez
-
-    @property
-    def fullname(self):
-        if self.last_name is not None:
-            return ' '.join((self.first_name, self.last_name))
-        return self.first_name or self.username or str(self.tg_id) or str(self.id)
-
-    # noinspection PyUnresolvedReferences
-    async def get_uk(self, chat: Chat) -> "UserKarma":  # noqa: F821
-        return await self.karma.filter(chat=chat).first()
-
-    async def get_karma(self, chat: Chat):
-        user_karma = await self.get_uk(chat)
-        if user_karma:
-            # noinspection PyUnresolvedReferences
-            return user_karma.karma_round
-        return None
-
-    async def set_karma(self, chat: Chat, karma: int):
-        user_karma = await self.karma.filter(chat=chat).first()
-        user_karma.karma = karma
-        await user_karma.save()
-
-    async def get_number_in_top_karma(self, chat: Chat) -> int:
-        # noinspection PyUnresolvedReferences
-        uk: "UserKarma" = await self.get_uk(chat)  # noqa: F821
-        return await uk.number_in_top()
-
-    async def has_now_ro_db(self, chat: Chat):
-        my_restrictions = await self.my_restriction_events.filter(
-            chat=chat,
-            type_restriction=TypeRestriction.ro.name
-        ).all()
-        for my_restriction in my_restrictions:
-            if my_restriction.timedelta_restriction \
-                    and my_restriction.date + my_restriction.timedelta_restriction > datetime.now():
-                return True
-        return False
-
-    def to_json(self):
-        return dict(
-            id=self.id,
-            tg_id=self.tg_id,
-            first_name=self.first_name,
-            last_name=self.last_name,
-            username=self.username,
-            is_bot=self.is_bot
-        )
-
-    def __str__(self):
-        rez = f"User ID {self.tg_id}, by name {self.first_name} {self.last_name}"
-        if self.username:
-            rez += f" with username @{self.username}"
-        return rez
+class User(Base):
+    __tablename__ = "users"
+    __mapper_args__ = {"eager_defaults": True}
+    id = Column(BigInteger, primary_key=True)
+    tg_id = Column(BigInteger, unique=True)
+    first_name = Column(Text, nullable=True)
+    last_name = Column(Text, nullable=True)
+    username = Column(Text, nullable=True)
+    is_bot = Column(Boolean, default=False)
 
     def __repr__(self):
-        return str(self)
+        rez = (
+            f"<User "
+            f"ID={self.tg_id} "
+            f"name={self.first_name} {self.last_name} "
+        )
+        if self.username:
+            rez += f"username=@{self.username}"
+        return rez + ">"

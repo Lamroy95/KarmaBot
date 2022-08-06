@@ -1,37 +1,35 @@
 from dataclasses import dataclass
 
-from app.utils.log import Logger
+import logging
 
 
-logger = Logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
 class DBConfig:
-    db_type: str = None
+    type: str = None
+    connector: str = None
+    host: str = None
+    port: int = None
     login: str = None
     password: str = None
-    db_name: str = None
-    db_host: str = None
-    db_port: int = None
-    db_path: str = None
+    name: str = None
+    path: str = None
 
-    def create_url_config(self):
-        if self.db_type == 'mysql':
-            db_url = (
-                f'{self.db_type}://{self.login}:{self.password}'
-                f'@{self.db_host}:{self.db_port}/{self.db_name}'
+    @property
+    def uri(self):
+        if self.type in ('mysql', 'postgresql'):
+            url = (
+                f'{self.type}+{self.connector}://'
+                f'{self.login}:{self.password}'
+                f'@{self.host}:{self.port}/{self.name}'
             )
-        elif self.db_type == 'postgres':
-            db_url = (
-                f'{self.db_type}://{self.login}:{self.password}'
-                f'@{self.db_host}:{self.db_port}/{self.db_name}'
-            )
-        elif self.db_type == 'sqlite':
-            db_url = (
-                f'{self.db_type}://{self.db_path}'
+        elif self.type == 'sqlite':
+            url = (
+                f'{self.type}://{self.path}'
             )
         else:
             raise ValueError("DB_TYPE not mysql, sqlite or postgres")
-        logger.debug(db_url)
-        return db_url
+        logger.debug(url)
+        return url
